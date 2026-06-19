@@ -19,9 +19,7 @@ export default function AdvancedOptions({ options, onChange }) {
       <div className={`advanced-panel${open ? ' open' : ''}`}>
         <div style={{ paddingTop: '1.25rem' }}>
           <div className="info-box">
-            <strong>Smart Padding:</strong> The tool auto-detects the actual content boundary
-            (e.g. a product on transparent background), strips existing padding, and applies
-            exactly your specified padding from the true edge. Content is horizontally centred.
+            <strong>Processing Flow:</strong> AI removes background → transparent edges are trimmed tight around the object → image is stretched to your size → background color is applied.
           </div>
 
           <div className="form-row">
@@ -34,20 +32,6 @@ export default function AdvancedOptions({ options, onChange }) {
               <label>Bottom Padding (px)</label>
               <input type="number" value={options.paddingBottom} min={0} max={500}
                 onChange={e => onChange({ ...options, paddingBottom: parseInt(e.target.value) || 0 })} />
-            </div>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <div className="slider-wrapper">
-              <div className="slider-label">
-                <label>Alpha Detection Threshold</label>
-                <span className="slider-value">{options.threshold}</span>
-              </div>
-              <input type="range" min={0} max={100} value={options.threshold}
-                onChange={e => onChange({ ...options, threshold: parseInt(e.target.value) })} />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Higher = detects semi-transparent curved edges more aggressively
-              </span>
             </div>
           </div>
           <div className="form-group" style={{ marginBottom: '1rem' }}>

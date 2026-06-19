@@ -12,7 +12,7 @@ import {
 } from './components/Icons';
 import { removeBackground } from '@imgly/background-removal';
 
-const DEFAULT_ADVANCED = { paddingTop: 20, paddingBottom: 20, threshold: 5, bgColor: null, removeBg: false };
+const DEFAULT_ADVANCED = { paddingTop: 20, paddingBottom: 20, bgColor: null, removeBg: false };
 const DEFAULT_OUTPUT = { format: 'png', quality: 90, filename: '' };
 const DEFAULT_FEATURED = {
   canvasWidth: 1200, canvasHeight: 628,
@@ -99,7 +99,6 @@ export default function Home() {
     fd.append('output_height',   effHeight);
     fd.append('padding_top',     effAdvanced.paddingTop);
     fd.append('padding_bottom',  effAdvanced.paddingBottom);
-    fd.append('threshold',       effAdvanced.threshold);
     if (effAdvanced.bgColor) fd.append('bg_color', effAdvanced.bgColor);
     fd.append('output_format',   output.format);
     fd.append('compress_quality', output.quality);

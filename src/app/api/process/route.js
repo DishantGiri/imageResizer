@@ -3,86 +3,43 @@ import sharp from 'sharp';
 
 export const config = { api: { bodyParser: false } };
 
-async function detectContentBoundaries(imageBuffer, threshold = 5) {
-  const { data, info } = await sharp(imageBuffer)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  const { width, height, channels } = info;
-  let top = 0, bottom = height - 1, left = 0, right = width - 1;
-
-  // Scan top
-  outer: for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const alpha = data[(y * width + x) * channels + 3];
-      if (alpha > threshold) { top = y; break outer; }
-    }
+// Helper: trim transparent edges, returns tight-cropped buffer
+async function trimToObject(imageBuffer) {
+  const meta = await sharp(imageBuffer).metadata();
+  if (!meta.hasAlpha) return imageBuffer;
+  try {
+    return await sharp(imageBuffer).trim({ threshold: 10 }).toBuffer();
+  } catch {
+    return imageBuffer;
   }
-  // Scan bottom
-  outer: for (let y = height - 1; y >= 0; y--) {
-    for (let x = 0; x < width; x++) {
-      const alpha = data[(y * width + x) * channels + 3];
-      if (alpha > threshold) { bottom = y; break outer; }
-    }
-  }
-  // Scan left
-  outer: for (let x = 0; x < width; x++) {
-    for (let y = 0; y < height; y++) {
-      const alpha = data[(y * width + x) * channels + 3];
-      if (alpha > threshold) { left = x; break outer; }
-    }
-  }
-  // Scan right
-  outer: for (let x = width - 1; x >= 0; x--) {
-    for (let y = 0; y < height; y++) {
-      const alpha = data[(y * width + x) * channels + 3];
-      if (alpha > threshold) { right = x; break outer; }
-    }
-  }
-
-  return { top, bottom, left, right };
 }
 
 async function processImage(imageBuffer, {
   paddingTop = 20,
   paddingBottom = 20,
-  threshold = 5,
   outputWidth = 500,
   outputHeight = 500,
   bgColor = null,
 }) {
-  // Ensure RGBA
-  const rgbaBuffer = await sharp(imageBuffer).ensureAlpha().toBuffer();
-  const boundaries = await detectContentBoundaries(rgbaBuffer, threshold);
+  // Step 1: Remove transparency — tight-crop around the object
+  const cropped = await trimToObject(imageBuffer);
+  const croppedMeta = await sharp(cropped).metadata();
 
-  const { top, bottom, left, right } = boundaries;
-  const contentW = right - left + 1;
-  const contentH = bottom - top + 1;
+  // Step 2: Scale the object as BIG as possible inside the padded area (preserve proportions)
+  const availableW = outputWidth;
+  const availableH = Math.max(1, outputHeight - paddingTop - paddingBottom);
+  const scale = Math.min(availableW / croppedMeta.width, availableH / croppedMeta.height);
+  const newW = Math.round(croppedMeta.width * scale);
+  const newH = Math.round(croppedMeta.height * scale);
 
-  // Crop to content
-  let img = sharp(rgbaBuffer).extract({
-    left,
-    top,
-    width: Math.max(1, contentW),
-    height: Math.max(1, contentH),
-  });
+  const resized = await sharp(cropped)
+    .ensureAlpha()
+    .resize(newW, newH, { fit: 'fill' })
+    .toBuffer();
 
-  const availableH = outputHeight - paddingTop - paddingBottom;
-  let scaleFactor = availableH > 0 && contentH > 0 ? availableH / contentH : 1;
-
-  let newW = Math.round(contentW * scaleFactor);
-  let newH = Math.round(contentH * scaleFactor);
-
-  if (newW > outputWidth) {
-    scaleFactor = outputWidth / contentW;
-    newW = outputWidth;
-    newH = Math.round(contentH * scaleFactor);
-  }
-
-  const resized = await img.resize(newW, newH, { fit: 'fill' }).toBuffer();
-
-  const xPos = Math.floor((outputWidth - newW) / 2);
+  // Step 3: Center on canvas and add background
+  const left = Math.floor((outputWidth - newW) / 2);
+  const top  = paddingTop + Math.floor((availableH - newH) / 2);
 
   let bg = { r: 0, g: 0, b: 0, alpha: 0 };
   if (bgColor) {
@@ -95,20 +52,14 @@ async function processImage(imageBuffer, {
     };
   }
 
-  // Composite onto transparent or colored canvas
   const result = await sharp({
-    create: {
-      width: outputWidth,
-      height: outputHeight,
-      channels: 4,
-      background: bg,
-    },
+    create: { width: outputWidth, height: outputHeight, channels: 4, background: bg },
   })
-    .composite([{ input: resized, left: xPos, top: paddingTop }])
+    .composite([{ input: resized, left, top }])
     .png()
     .toBuffer();
 
-  return { buffer: result, boundaries };
+  return { buffer: result, boundaries: null };
 }
 
 async function createFeaturedImage(imageBuffer, {
@@ -129,25 +80,32 @@ async function createFeaturedImage(imageBuffer, {
   };
 
   const bg = hex2rgb(backgroundColor);
-  const meta = await sharp(imageBuffer).metadata();
 
-  const scaleFactor = Math.min(
-    (canvasWidth - 40) / meta.width,
-    (canvasHeight - paddingTop - paddingBottom) / meta.height
-  );
+  // Step 1: Trim transparent edges — get tight crop around the object
+  const cropped = await trimToObject(imageBuffer);
+  const meta = await sharp(cropped).metadata();
 
-  const newW = Math.round(meta.width * scaleFactor);
-  const newH = Math.round(meta.height * scaleFactor);
+  // Step 2: Scale as BIG as possible inside the padded canvas (preserve proportions)
+  const paddingH = 20; // horizontal breathing room
+  const availableW = canvasWidth - paddingH * 2;
+  const availableH = canvasHeight - paddingTop - paddingBottom;
+  const scale = Math.min(availableW / meta.width, availableH / meta.height);
+  const newW = Math.round(meta.width * scale);
+  const newH = Math.round(meta.height * scale);
+
+  // Step 3: Center on canvas
   const x = Math.floor((canvasWidth - newW) / 2);
-  const y = paddingTop + Math.floor((canvasHeight - paddingTop - paddingBottom - newH) / 2);
+  const y = paddingTop + Math.floor((availableH - newH) / 2);
 
-  const resized = await sharp(imageBuffer).ensureAlpha().resize(newW, newH, { fit: 'fill' }).toBuffer();
+  const resized = await sharp(cropped)
+    .ensureAlpha()
+    .resize(newW, newH, { fit: 'fill' })
+    .toBuffer();
 
-  // Build background (gradient if needed)
+  // Build background (solid or gradient)
   let background;
   if (gradientColor) {
     const gc = hex2rgb(gradientColor);
-    // Build gradient pixels manually
     const pixels = Buffer.alloc(canvasWidth * canvasHeight * 3);
     for (let row = 0; row < canvasHeight; row++) {
       const ratio = row / canvasHeight;
@@ -180,7 +138,6 @@ export async function POST(request) {
 
     const paddingTop = parseInt(formData.get('padding_top') ?? '20');
     const paddingBottom = parseInt(formData.get('padding_bottom') ?? '20');
-    const threshold = parseInt(formData.get('threshold') ?? '5');
     const outputWidth = Math.max(50, Math.min(5000, parseInt(formData.get('output_width') ?? '500')));
     const outputHeight = Math.max(50, Math.min(5000, parseInt(formData.get('output_height') ?? '500')));
     const customFilename = formData.get('custom_filename') ?? '';
@@ -241,7 +198,7 @@ export async function POST(request) {
       }
     } else {
       const result = await processImage(imageBuffer, {
-        paddingTop, paddingBottom, threshold, outputWidth, outputHeight, bgColor,
+        paddingTop, paddingBottom, outputWidth, outputHeight, bgColor,
       });
       outputBuffer = result.buffer;
       boundaries = result.boundaries;
