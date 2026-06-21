@@ -8,7 +8,8 @@ import FeaturedImageOptions from './components/FeaturedImageOptions';
 import ResultPanel from './components/ResultPanel';
 import {
   UploadIcon, LinkIcon, ZapIcon, LayersIcon,
-  StarIcon, AlertIcon, ImageIcon, WandIcon, DownloadIcon
+  StarIcon, AlertIcon, ImageIcon, WandIcon, DownloadIcon,
+  ScissorsIcon, SparkleIcon, PackageIcon
 } from './components/Icons';
 import { removeBackground } from '@imgly/background-removal';
 
@@ -51,6 +52,16 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = (e) => setPreviewSrc(e.target.result);
     reader.readAsDataURL(f);
+  };
+
+  // ── Handle URL dropped into upload zone ──
+  const handleDroppedUrl = (url) => {
+    setImageUrl(url);
+    setPreviewSrc(url);
+    setFile(null);
+    setResult(null);
+    setError('');
+    setTab('url');
   };
 
   // ── Build FormData and submit (accepts optional overrides) ──
@@ -220,7 +231,7 @@ export default function Home() {
   return (
     <>
       <div className="bg-mesh" />
-      <div className="container">
+      <div className="container" style={{ paddingTop: '1rem' }}>
 
         {/* ── Header ── */}
         <header className="header">
@@ -252,15 +263,7 @@ export default function Home() {
 
         {/* ── Main Card ── */}
         {!result && (
-          <div className="card" style={{ position: 'relative' }}>
-
-            {/* Loading overlay */}
-            {loading && (
-              <div className="loading-overlay">
-                <div className="spinner" />
-                <div className="loading-text">{loadingMsg}</div>
-              </div>
-            )}
+          <div className="card">
 
             {/* ── Tabs ── */}
             <div className="tabs">
@@ -284,7 +287,7 @@ export default function Home() {
             {tab === 'upload' && (
               <>
                 <div className="section-title"><ImageIcon />Select Image</div>
-                <UploadZone onFile={handleFile} />
+                <UploadZone onFile={handleFile} onUrl={handleDroppedUrl} />
                 {previewSrc && (
                   <div className="preview-grid" style={{ marginTop: '1rem' }}>
                     <div className="preview-box">
@@ -359,62 +362,70 @@ export default function Home() {
             <hr className="divider" />
 
             {/* ── Quick Presets ── */}
-            <div className="section-title" style={{ marginTop: '0.5rem' }}>
-              <WandIcon /> Quick Presets
-              <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-muted)' }}>AI removes BG → places on your color</span>
+            <div className="qp-header">
+              <div className="section-title" style={{ marginBottom: 0 }}>
+                <WandIcon /> Quick Presets
+              </div>
+              <span className="qp-badge">AI removes BG automatically</span>
             </div>
+
             <div className="preset-grid">
 
-              {/* Square — always transparent */}
-              <div className="preset-card">
+              {/* Square — transparent */}
+              <div className="preset-card preset-card--square">
+                <div className="preset-card-tag">500 × 500 px</div>
                 <div className="preset-card-header">
-                  <div className="preset-card-icon">&#9634;</div>
+                  <div className="preset-card-icon-wrap preset-icon-sq">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
+                      <rect x="3" y="3" width="18" height="18" rx="3"/>
+                    </svg>
+                  </div>
                   <div>
                     <div className="preset-card-title">Square Image</div>
-                    <div className="preset-card-dim">500 × 500 px</div>
+                    <div className="preset-card-sub">Transparent PNG</div>
                   </div>
                 </div>
-                <p className="preset-card-desc">Isolates subject on a <strong>transparent background</strong>. Perfect for product listings &amp; e-commerce.</p>
-                <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.75rem',
-                  padding:'0.5rem 0.75rem', borderRadius:'var(--radius-sm)',
-                  background:'rgba(255,255,255,0.04)', border:'1px dashed rgba(255,255,255,0.12)' }}>
-                  <span style={{ fontSize:'1.1rem' }}>&#9601;</span>
-                  <span style={{ fontSize:'0.8rem', color:'var(--text-muted)' }}>Transparent — no background fill</span>
+                <p className="preset-card-desc">Removes background, tight-crops the object. No fill — pure transparent PNG ready for any use.</p>
+                <div className="preset-transparent-badge">
+                  <span className="checkerboard-mini" />
+                  Transparent background
                 </div>
-                <button className="btn btn-primary" style={{ width: '100%' }}
-                  onClick={() => submit('resize', {
-                    width: 500, height: 500,
-                    advanced: { ...advanced, removeBg: true, bgColor: null }
-                  })}
+                <button className="btn btn-primary preset-btn-full"
+                  onClick={() => submit('resize', { width: 500, height: 500, advanced: { ...advanced, removeBg: true, bgColor: null } })}
                   disabled={loading} type="button">
                   <WandIcon /> Generate Square
                 </button>
               </div>
 
-              {/* Featured */}
-              <div className="preset-card">
+              {/* Featured — custom bg */}
+              <div className="preset-card preset-card--featured">
+                <div className="preset-card-tag preset-card-tag--purple">1200 × 628 px</div>
                 <div className="preset-card-header">
-                  <div className="preset-card-icon">&#128444;</div>
+                  <div className="preset-card-icon-wrap preset-icon-feat">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
+                      <rect x="2" y="5" width="20" height="14" rx="2"/>
+                      <path d="M2 10h20"/>
+                    </svg>
+                  </div>
                   <div>
                     <div className="preset-card-title">Featured Image</div>
-                    <div className="preset-card-dim">1200 × 628 px</div>
+                    <div className="preset-card-sub">Blog &amp; Social Media</div>
                   </div>
                 </div>
-                <p className="preset-card-desc">Isolates subject, places on custom background. Perfect for blog posts &amp; social media.</p>
-                <div className="color-picker-group" style={{ marginBottom: '0.75rem' }}>
-                  <div className="color-swatch">
-                    <input type="color" value={featuredQuickBgColor} onChange={e => setFeaturedQuickBgColor(e.target.value)} />
+                <p className="preset-card-desc">Removes background, places subject on your chosen color. Perfect for blog headers &amp; listings.</p>
+                <div className="preset-color-row">
+                  <label className="preset-color-label">Background</label>
+                  <div className="preset-color-pick">
+                    <div className="color-swatch" style={{ width: 32, height: 32, borderRadius: 8 }}>
+                      <input type="color" value={featuredQuickBgColor} onChange={e => setFeaturedQuickBgColor(e.target.value)} />
+                    </div>
+                    <input type="text" value={featuredQuickBgColor}
+                      onChange={e => setFeaturedQuickBgColor(e.target.value)}
+                      className="preset-color-input" />
                   </div>
-                  <input type="text" value={featuredQuickBgColor}
-                    onChange={e => setFeaturedQuickBgColor(e.target.value)}
-                    style={{ fontFamily: 'monospace', flex: 1 }} />
                 </div>
-                <button className="btn btn-primary"
-                  style={{ width: '100%', background: 'linear-gradient(135deg,#667eea,#764ba2)', boxShadow: '0 4px 20px rgba(102,126,234,0.35)' }}
-                  onClick={() => submit('featured', {
-                    advanced: { ...advanced, removeBg: true },
-                    featured: { ...featured, bgColor: featuredQuickBgColor }
-                  })}
+                <button className="btn preset-btn-full preset-btn-feat"
+                  onClick={() => submit('featured', { advanced: { ...advanced, removeBg: true }, featured: { ...featured, bgColor: featuredQuickBgColor } })}
                   disabled={loading} type="button">
                   <StarIcon /> Generate Featured
                 </button>
@@ -469,6 +480,52 @@ export default function Home() {
           <p>PixelForge — Smart Image Resizer &amp; Converter &nbsp;•&nbsp; Built with Next.js &amp; Sharp</p>
         </footer>
       </div>
+
+      {/* ── Fixed Loader Dialog ── */}
+      {loading && (
+        <div className="loader-backdrop">
+          <div className="loader-dialog">
+            <div className="loader-orb">
+              <div className="loader-ring" />
+              <div className="loader-ring loader-ring-2" />
+              <div className="loader-ring loader-ring-3" />
+              <span className="loader-orb-icon">
+                {loadingMsg.includes('Removing') ? <ScissorsIcon /> :
+                 loadingMsg.includes('Generating') ? <ZapIcon /> :
+                 loadingMsg.includes('featured') || loadingMsg.includes('Featured') ? <ImageIcon /> :
+                 loadingMsg.includes('Compress') ? <PackageIcon /> : <SparkleIcon />}
+              </span>
+            </div>
+            <div className="loader-dialog-body">
+              <p className="loader-dialog-title">
+                {loadingMsg.includes('Removing') ? 'Removing Background…' :
+                 loadingMsg.includes('Generating') ? 'Generating Images…' :
+                 loadingMsg.includes('Compress') ? 'Compressing…' :
+                 loadingMsg.includes('featured') || loadingMsg.includes('Featured') ? 'Creating Featured…' :
+                 'Processing…'}
+              </p>
+              <p className="loader-dialog-sub">{loadingMsg}</p>
+              <div className="loader-steps">
+                {[
+                  { key: 'bg',   label: 'Remove BG',   active: loadingMsg.includes('Removing') },
+                  { key: 'proc', label: 'Process',      active: loadingMsg.includes('Processing') || loadingMsg.includes('Generating') || loadingMsg.includes('Compress') || loadingMsg.includes('featured') || loadingMsg.includes('Featured') },
+                  { key: 'out',  label: 'Export',       active: false },
+                ].map((step, i) => {
+                  const isDone = step.key === 'bg' && !loadingMsg.includes('Removing');
+                  return (
+                    <div key={step.key} className={`loader-step${step.active ? ' active' : ''}${isDone ? ' done' : ''}`}>
+                      <div className="loader-step-dot">
+                        {isDone ? <span style={{fontSize:'0.7rem'}}>&#10003;</span> : step.active ? <span className="dot-pulse" /> : <span style={{opacity:0.3}}>{i+1}</span>}
+                      </div>
+                      <span>{step.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Toast ── */}
       {toast && (

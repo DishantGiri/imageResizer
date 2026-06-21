@@ -90,8 +90,29 @@ export const StarIcon = () => (
 export const WandIcon = () => (
   <svg {...svgProps}>
     <path d="M2.7 15.3l11-11a2.1 2.1 0 0 1 3 0l1.6 1.6a2.1 2.1 0 0 1 0 3l-11 11a2.1 2.1 0 0 1-3 0l-1.6-1.6a2.1 2.1 0 0 1 0-3z"/>
-    <path d="M19 3l2 2"/>
-    <path d="M22 6l-2-2"/>
-    <path d="M2 20l4-4"/>
+    <path d="M19 3l2 2"/><path d="M22 6l-2-2"/><path d="M2 20l4-4"/>
+  </svg>
+);
+
+export const ScissorsIcon = () => (
+  <svg {...svgProps}>
+    <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+    <line x1="20" y1="4" x2="8.12" y2="15.88"/>
+    <line x1="14.47" y1="14.48" x2="20" y2="20"/>
+    <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+  </svg>
+);
+
+export const SparkleIcon = () => (
+  <svg {...svgProps}>
+    <path d="M12 2l2.4 7.6H22l-6.4 4.6 2.4 7.6L12 17.2 5.9 21.8l2.4-7.6L2 9.6h7.6L12 2z"/>
+  </svg>
+);
+
+export const PackageIcon = () => (
+  <svg {...svgProps}>
+    <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/>
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
   </svg>
 );

@@ -1,4 +1,6 @@
 import './globals.css';
+import { ThemeProvider } from './components/ThemeProvider';
+import Navbar from './components/Navbar';
 
 export const metadata = {
   title: 'PixelForge – Image Resizer & Converter',
@@ -9,8 +11,13 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" data-theme="dark">
+      <body>
+        <ThemeProvider>
+          <Navbar />
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
