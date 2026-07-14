@@ -37,11 +37,22 @@ export default function Home() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [featuredQuickBgColor, setFeaturedQuickBgColor] = useState('#ffffff');
+  const [qpFilename, setQpFilename] = useState('');
+  const [qpFormat, setQpFormat] = useState('webp');
   const formRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(''), 3500);
+  };
+
+  const cancelOperation = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setLoading(false);
+    showToast('Operation cancelled.');
   };
 
   // ── Handle file selection ──
@@ -74,10 +85,15 @@ export default function Home() {
     const effHeight   = overrides.height   ?? height;
     const effAdvanced = overrides.advanced ? { ...advanced, ...overrides.advanced } : advanced;
     const effFeatured = overrides.featured ? { ...featured, ...overrides.featured } : featured;
+    const effFormat   = overrides.format   ?? output.format;
+    const effFilename = overrides.filename ?? output.filename;
 
     setError('');
     setResult(null);
     setLoading(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     let finalFile = file;
     let finalImageUrl = imageUrl;
@@ -86,10 +102,12 @@ export default function Home() {
       setLoadingMsg('Removing background (AI loading on first use)…');
       try {
         const source = file || imageUrl.trim();
-        const blob = await removeBackground(source);
+        const blob = await removeBackground(source, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         finalFile = new File([blob], 'bg-removed.png', { type: 'image/png' });
         finalImageUrl = '';
       } catch (e) {
+        if (controller.signal.aborted || e.name === 'AbortError') return;
         setError('Background removal failed: ' + e.message);
         setLoading(false);
         return;
@@ -111,9 +129,9 @@ export default function Home() {
     fd.append('padding_top',     effAdvanced.paddingTop);
     fd.append('padding_bottom',  effAdvanced.paddingBottom);
     if (effAdvanced.bgColor) fd.append('bg_color', effAdvanced.bgColor);
-    fd.append('output_format',   output.format);
+    fd.append('output_format',   effFormat);
     fd.append('compress_quality', output.quality);
-    if (output.filename) fd.append('custom_filename', output.filename);
+    if (effFilename) fd.append('custom_filename', effFilename);
 
     if (action === 'featured') {
       fd.append('canvas_width',    effFeatured.canvasWidth);
@@ -125,17 +143,21 @@ export default function Home() {
     }
 
     try {
-      const res = await fetch('/api/process', { method: 'POST', body: fd });
+      const res = await fetch('/api/process', { method: 'POST', body: fd, signal: controller.signal });
       const data = await res.json();
+      if (controller.signal.aborted) return;
       if (data.success) {
         setResult({ ...data, originalPreview: previewSrc || null });
       } else {
         setError(data.message || 'Something went wrong.');
       }
     } catch (e) {
+      if (e.name === 'AbortError') return;
       setError(`Network error: ${e.message}`);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   };
 
@@ -149,10 +171,14 @@ export default function Home() {
     setLoading(true);
     setLoadingMsg('Removing background (AI loading on first use)…');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       // Step 1: Remove BG once, reuse for both
       const source = file || imageUrl.trim();
-      const blob = await removeBackground(source);
+      const blob = await removeBackground(source, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       const bgRemovedFile = new File([blob], 'bg-removed.png', { type: 'image/png' });
 
       setLoadingMsg('Generating Square & Featured images in parallel…');
@@ -166,9 +192,11 @@ export default function Home() {
         fd.append('padding_top',    advanced.paddingTop);
         fd.append('padding_bottom', advanced.paddingBottom);
         fd.append('threshold',      advanced.threshold);
-        // No bg_color → transparent PNG
-        fd.append('output_format',   'png');
+        fd.append('output_format',   qpFormat);
         fd.append('compress_quality', output.quality);
+        if (qpFilename) {
+          fd.append('custom_filename', `${qpFilename}-square`);
+        }
         return fd;
       };
 
@@ -181,19 +209,23 @@ export default function Home() {
         fd.append('background_color', featuredQuickBgColor);
         fd.append('padding_top',      featured.paddingTop);
         fd.append('padding_bottom',   featured.paddingBottom);
-        fd.append('output_format',    output.format);
+        fd.append('output_format',    qpFormat);
         fd.append('compress_quality', output.quality);
+        if (qpFilename) {
+          fd.append('custom_filename', `${qpFilename}-feature`);
+        }
         return fd;
       };
 
       // Step 2: Fire both in parallel
       const [squareRes, featuredRes] = await Promise.all([
-        fetch('/api/process', { method: 'POST', body: makeSquareFd() }),
-        fetch('/api/process', { method: 'POST', body: makeFeaturedFd() }),
+        fetch('/api/process', { method: 'POST', body: makeSquareFd(), signal: controller.signal }),
+        fetch('/api/process', { method: 'POST', body: makeFeaturedFd(), signal: controller.signal }),
       ]);
       const [squareData, featuredData] = await Promise.all([
         squareRes.json(), featuredRes.json(),
       ]);
+      if (controller.signal.aborted) return;
 
       // Step 3: Trigger downloads
       const triggerDownload = (dataUrl, filename) => {
@@ -206,17 +238,28 @@ export default function Home() {
       };
 
       let anyError = false;
-      if (squareData.success)  triggerDownload(squareData.dataUrl, 'square-500x500.png');
+      if (squareData.success) {
+        const ext = squareData.filename?.split('.').pop() || qpFormat;
+        const name = qpFilename ? `${qpFilename}-square.${ext}` : `square-500x500.${ext}`;
+        triggerDownload(squareData.dataUrl, name);
+      }
       else { setError('Square failed: ' + squareData.message); anyError = true; }
 
-      if (featuredData.success) triggerDownload(featuredData.dataUrl, `featured-1200x628.${featuredData.filename?.split('.').pop() || output.format}`);
+      if (featuredData.success) {
+        const ext = featuredData.filename?.split('.').pop() || qpFormat;
+        const name = qpFilename ? `${qpFilename}-feature.${ext}` : `featured-1200x628.${ext}`;
+        triggerDownload(featuredData.dataUrl, name);
+      }
       else { setError((anyError ? '' : '') + 'Featured failed: ' + featuredData.message); anyError = true; }
 
       if (!anyError) showToast('✅ Both files downloaded successfully!');
     } catch (e) {
+      if (e.name === 'AbortError') return;
       setError('Download Both failed: ' + e.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   };
 
@@ -369,6 +412,37 @@ export default function Home() {
               <span className="qp-badge">AI removes BG automatically</span>
             </div>
 
+            {/* Quick Preset Options */}
+            <div className="qp-settings-bar">
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="qp-settings-label">Custom Preset Name Prefix</label>
+                <input
+                  type="text"
+                  placeholder="e.g. product-image"
+                  value={qpFilename}
+                  onChange={(e) => setQpFilename(e.target.value)}
+                  className="qp-settings-input"
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="qp-settings-label">Preset Format</label>
+                <select
+                  value={qpFormat}
+                  onChange={(e) => setQpFormat(e.target.value)}
+                  className="qp-settings-select"
+                  style={{ appearance: 'auto' }}
+                >
+                  <option value="webp">WebP (Default)</option>
+                  <option value="png">PNG</option>
+                  <option value="jpeg">JPEG</option>
+                  <option value="avif">AVIF</option>
+                  <option value="gif">GIF</option>
+                  <option value="tiff">TIFF</option>
+                  <option value="bmp">BMP</option>
+                </select>
+              </div>
+            </div>
+
             <div className="preset-grid">
 
               {/* Square — transparent */}
@@ -382,16 +456,33 @@ export default function Home() {
                   </div>
                   <div>
                     <div className="preset-card-title">Square Image</div>
-                    <div className="preset-card-sub">Transparent PNG</div>
+                    <div className="preset-card-sub">
+                      {['jpeg', 'jpg', 'bmp'].includes(qpFormat) ? `${qpFormat.toUpperCase()} (Solid BG)` : `Transparent ${qpFormat.toUpperCase()}`}
+                    </div>
                   </div>
                 </div>
-                <p className="preset-card-desc">Removes background, tight-crops the object. No fill — pure transparent PNG ready for any use.</p>
+                <p className="preset-card-desc">Removes background, tight-crops the object. Exported in {qpFormat.toUpperCase()} format.</p>
                 <div className="preset-transparent-badge">
-                  <span className="checkerboard-mini" />
-                  Transparent background
+                  {['jpeg', 'jpg', 'bmp'].includes(qpFormat) ? (
+                    <>
+                      <span className="checkerboard-mini" style={{ background: '#ffffff', backgroundImage: 'none' }} />
+                      Solid white background
+                    </>
+                  ) : (
+                    <>
+                      <span className="checkerboard-mini" />
+                      Transparent background
+                    </>
+                  )}
                 </div>
                 <button className="btn btn-primary preset-btn-full"
-                  onClick={() => submit('resize', { width: 500, height: 500, advanced: { ...advanced, removeBg: true, bgColor: null } })}
+                  onClick={() => submit('resize', {
+                    width: 500,
+                    height: 500,
+                    advanced: { ...advanced, removeBg: true, bgColor: null },
+                    format: qpFormat,
+                    filename: qpFilename ? `${qpFilename}-square` : ''
+                  })}
                   disabled={loading} type="button">
                   <WandIcon /> Generate Square
                 </button>
@@ -409,10 +500,10 @@ export default function Home() {
                   </div>
                   <div>
                     <div className="preset-card-title">Featured Image</div>
-                    <div className="preset-card-sub">Blog &amp; Social Media</div>
+                    <div className="preset-card-sub">Blog &amp; Social Media ({qpFormat.toUpperCase()})</div>
                   </div>
                 </div>
-                <p className="preset-card-desc">Removes background, places subject on your chosen color. Perfect for blog headers &amp; listings.</p>
+                <p className="preset-card-desc">Removes background, places subject on your chosen color. Exported in {qpFormat.toUpperCase()} format.</p>
                 <div className="preset-color-row">
                   <label className="preset-color-label">Background</label>
                   <div className="preset-color-pick">
@@ -425,7 +516,12 @@ export default function Home() {
                   </div>
                 </div>
                 <button className="btn preset-btn-full preset-btn-feat"
-                  onClick={() => submit('featured', { advanced: { ...advanced, removeBg: true }, featured: { ...featured, bgColor: featuredQuickBgColor } })}
+                  onClick={() => submit('featured', {
+                    advanced: { ...advanced, removeBg: true },
+                    featured: { ...featured, bgColor: featuredQuickBgColor },
+                    format: qpFormat,
+                    filename: qpFilename ? `${qpFilename}-feature` : ''
+                  })}
                   disabled={loading} type="button">
                   <StarIcon /> Generate Featured
                 </button>
@@ -447,7 +543,7 @@ export default function Home() {
               type="button"
             >
               <DownloadIcon />
-              {loading && loadingMsg.includes('Generating Square') ? 'Generating both…' : '⬇  Download Both (Square + Featured)'}
+              {loading && loadingMsg.includes('Generating Square') ? 'Generating both…' : `⬇  Download Both (Square + Featured - ${qpFormat.toUpperCase()})`}
             </button>
 
             <hr className="divider" />
@@ -521,6 +617,30 @@ export default function Home() {
                     </div>
                   );
                 })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={cancelOperation}
+                  type="button"
+                  style={{
+                    background: 'rgba(255, 90, 90, 0.1)',
+                    border: '1px solid rgba(255, 90, 90, 0.2)',
+                    color: 'var(--danger)',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 90, 90, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 90, 90, 0.35)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 90, 90, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 90, 90, 0.2)';
+                  }}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
