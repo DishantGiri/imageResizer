@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import sharp from 'sharp';
 
-export const config = { api: { bodyParser: false } };
 
 // Helper: trim transparent edges, returns tight-cropped buffer
 async function trimToObject(imageBuffer) {
